@@ -98,3 +98,18 @@ sys_date(void)
   cmostime(r);
   return 0;
 }
+
+int
+sys_set_sche_info(void)
+{
+    int n;
+    int n2;
+    if(argint(0, &n) < 0)    // n 은 우선순위 받기
+      return -1;
+    if(argint(1, &n2) < 0)   // n2는 종료 tick 받기
+      return -1;
+    cprintf("set_sche_info() pid =%d\n",myproc()->pid);   //우선순위 할당 출력
+    myproc()->priority=n;   //현재 실행하는 프로세스에 우선순위와 종료 tick 저장
+    myproc()->cpu_end=n2;
+    return 0;
+}

@@ -49,6 +49,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int priority;                // 우선순위
+  int proc_tick;               // time_quantum
+  int cpu_used;                // CPU 사용 총량
+  int cpu_end;                 // 종료 시간 
+  int priority_tick;           // 우선순위 재조정되기 전까지 사용한 CPU 시간 
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -56,3 +61,16 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+#define NULL 0
+
+typedef struct Node {
+  struct proc *p;
+  struct Node *next;
+} NODE;
+
+typedef struct LinkedList {
+  NODE *head;
+  NODE *tail;
+} LINKEDLIST;
+

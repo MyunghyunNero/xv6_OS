@@ -7,6 +7,16 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
+// 함수 선언
+void enqueue(struct proc* p);
+void dequeue(struct proc* node);
+NODE* findPreData(struct proc* p);
+NODE* select_highest_priority();
+
+int min_priority;
+LINKEDLIST queues[25];
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -88,8 +98,20 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-
+  p->proc_tick=0;
+  p->priority_tick=0;
+  NODE* min = select_highest_priority();  //최소 우선순위 넣어줌 
+  if(p->pid<3){
+    p->priority = 99;            //pid 3이하는 99 넣기
+  }else if(min == NULL){        //큐에 아무 것도 없으면 우선순위 0
+    p->priority = 0;
+  }else{
+    p->priority = min->p->priority;   // 최소 우선순위 넣기
+    
+  }
+  enqueue(p);  
   release(&ptable.lock);
+  
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
@@ -122,7 +144,7 @@ userinit(void)
 {
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-
+ 
   p = allocproc();
   
   initproc = p;
@@ -183,12 +205,12 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
-
+  
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
-
+ 
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -202,7 +224,7 @@ fork(void)
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
-
+  np->priority=0;
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
@@ -332,9 +354,44 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    // 현재 실행하는 프로세스 큐에서 제외 (정해진 CPU 사용량 충족 되면)
+  
+
+    NODE *highP_Node = select_highest_priority();
+    struct proc *highP = highP_Node->p;
+
+    p=highP;
+    
+
+    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    //   if(p->state != RUNNABLE)
+    //     continue;
+
+    //   struct proc *highP;
+    //   struct proc *p1;       
+    //   min_priority = p->priority;
+    //   highP = p;
+    //   for(p1 = ptable.proc; p1 < &ptable.proc[NPROC]; p1++){
+    //     if(p1->state == RUNNABLE && min_priority > p1->priority){
+    //       min_priority = p1->priority;
+    //       highP = p1;
+    //     }
+    //   }
+    //   if(highP->priority_tick%60==0){
+    //       cprintf("PID: %d, PRIORITY: %d, PROC_TICK: %d ticks, TOTAL_CPU_USAGE: %d (%d) \n", highP->pid, highP->priority,
+    //       highP->proc_tick, highP->cpu_used,ncpu);
+    //       // dequeue(highP);
+    //       highP->priority += (highP->priority_tick/10);
+    //       highP->priority_tick = 0;
+    //       highP->proc_tick=0;
+    //       // enqueue(highP);
+    //       #ifdef DEBUG
+    //         cprintf("PID: %d, NAME: %s,\n", p->pid, p->name);
+    //       #endif  
+    //   }
+      
+      p = highP;
+        
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
@@ -352,7 +409,7 @@ scheduler(void)
     }
     release(&ptable.lock);
 
-  }
+    // }
 }
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -460,8 +517,17 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+      NODE* min = select_highest_priority();
+      if(min == NULL){
+        p->priority = 0;
+      }else if(p->pid<3){
+        p->priority = 99;
+      }else{
+        p->priority = min->p->priority;
+      }
+    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -531,4 +597,99 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+void enqueue(struct proc *p) {
+    int priority = p->priority;
+    int index = priority / 4; // 큐 배열 인덱스 계산
+
+    NODE *node = (NODE *)kalloc();
+    node->p = p;
+    node->next = NULL;
+    
+
+    if(queues[index].head == NULL){
+      queues[index].head = node;
+      queues[index].tail = node;
+    }else{
+      queues[index].tail->next = node;
+      queues[index].tail = node;
+    }
+}
+
+
+NODE* findPreData(struct proc* p){  //찾을 데이터 전 노드 가져옴 
+    int index = p->priority/4;
+    NODE *nextNode = queues[index].head->next;
+    NODE *curNode = queues[index].head;
+    while(nextNode!=NULL){
+      if(nextNode->p == p){
+        return curNode;
+      }
+      nextNode = nextNode->next;
+      curNode = curNode->next;
+    }
+    return curNode;
+}
+
+
+void dequeue(struct proc* process) {
+    int index = process->priority/4;
+    if(queues[index].head == NULL) {    // 잘못된 큐 접근하면 에러
+      cprintf("dequeue error\n");
+    }else if(queues[index].head->p == process){   // 큐의 헤드가 삭제 노드이면 헤드 이동
+
+      NODE *delNode = queues[index].head;
+      queues[index].head = delNode->next;
+      kfree((char *)delNode); // 노드 메모리 해제
+    } 
+    else{                                     //큐의 헤드가 삭제노드가 아니면 
+      NODE *preNode = findPreData(process);
+      if(preNode != 0 ){
+        NODE *delNode = preNode->next;
+        if(delNode == queues[index].tail) {     // 큐의 꼬리가 삭제 노드이면 tail 이동
+          queues[index].tail = preNode;
+        }
+        preNode->next = delNode->next;     // 삭제 노드 이전 노드와 이후 노드 연결
+        kfree((char *)delNode); // 노드 메모리 해제
+      }
+    }
+    
+}
+
+
+NODE* select_highest_priority() {
+    int i;
+    int index=0;
+    NODE *ans_Node = NULL;
+    for (i = 0; i < 25; i++) {
+      if(ans_Node != NULL) break;   // 최소 우선순위이면서 실행가능한 노드를 찾으면 탈출
+      // 큐가 비어있지 않으면 
+      if (queues[i].head != NULL ) {
+        NODE *first_Node = queues[i].head;
+        NODE *cur_Node = NULL;
+
+        // 실행가능한 프로세스 있는지 체크 
+        while(first_Node->next != NULL){
+          if(first_Node->p->state == RUNNABLE){
+            cur_Node = first_Node;
+            break;
+          }
+        }
+        //실행가능한 프로세스 있으면 최소 우선순위인지 체크  
+        if(cur_Node != NULL){
+          NODE *search_Node = cur_Node;
+          while(search_Node->next != NULL){
+            if(search_Node->p->state == RUNNABLE && cur_Node->p->priority > search_Node->p->priority) {
+              cur_Node=search_Node;
+              break;
+            }
+            search_Node=search_Node->next;
+          }
+          ans_Node=cur_Node;
+        }
+      }
+    }
+    return ans_Node; 
 }
