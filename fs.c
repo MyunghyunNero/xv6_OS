@@ -81,6 +81,7 @@ balloc(uint dev)
 static void
 bfree(int dev, uint b)
 {
+
   struct buf *bp;
   int bi, m;
 
@@ -92,6 +93,7 @@ bfree(int dev, uint b)
   bp->data[bi/8] &= ~m;
   log_write(bp);
   brelse(bp);
+  
 }
 
 // Inodes.
@@ -369,6 +371,7 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+
 static uint
 bmap(struct inode *ip, uint bn)
 {
@@ -383,16 +386,87 @@ bmap(struct inode *ip, uint bn)
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0)
-      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+    //간접 블록 4개
+    for(int k=0;k<4;k++){
+      if((addr = ip->addrs[NDIRECT+k]) == 0)
+        ip->addrs[NDIRECT+k] = addr = balloc(ip->dev);
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+      if((addr = a[bn]) == 0){
+        a[bn] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+      return addr;
+    }
+  }
+  bn -= NINDIRECT;
+
+  if(bn < NINDIRECT * NINDIRECT){
+    // 이중간접 2개
+    for(int k=0;k<2;k++){
+      if((addr = ip->addrs[NDIRECT + 4+k]) == 0)
+        ip->addrs[NDIRECT + 4+k] = addr = balloc(ip->dev);
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+
+      uint indirect_block_idx = bn / NINDIRECT;
+      uint indirect_block_offset = bn % NINDIRECT;
+
+      if((addr = a[indirect_block_idx]) == 0){
+        a[indirect_block_idx] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+
+      if((addr = a[indirect_block_offset]) == 0){
+        a[indirect_block_offset] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+
+      return addr;
+    }
+  }
+  bn-=NDOUBLEINDIRECT;
+  if(bn < NTRIPLEINDIRECT){
+    // 3중 간접 1개
+    if((addr = ip->addrs[NDIRECT + 4+2]) == 0)
+      ip->addrs[NDIRECT + 4+2] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      a[bn] = addr = balloc(ip->dev);
+
+    uint double_indirect_block_idx = bn / (NINDIRECT * NINDIRECT);
+    uint double_indirect_block_offset = (bn / NINDIRECT) % NINDIRECT;
+    uint indirect_block_offset = bn % NINDIRECT;
+
+    if((addr = a[double_indirect_block_idx]) == 0){
+      a[double_indirect_block_idx] = addr = balloc(ip->dev);
       log_write(bp);
     }
     brelse(bp);
+
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+
+    if((addr = a[double_indirect_block_offset]) == 0){
+      a[double_indirect_block_offset] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+
+    if((addr = a[indirect_block_offset]) == 0){
+      a[indirect_block_offset] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
     return addr;
   }
 
@@ -407,27 +481,84 @@ bmap(struct inode *ip, uint bn)
 static void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
-
-  for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
+  int i, j, k, l;
+  
+  for (i = 0; i < NDIRECT; i++) {
+    if (ip->addrs[i]) {
       bfree(ip->dev, ip->addrs[i]);
       ip->addrs[i] = 0;
     }
   }
-
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
-    a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
-        bfree(ip->dev, a[j]);
+  //간접 인덱스 4개
+  for(int k = 0;k<4;k++){
+    if (ip->addrs[NDIRECT+k]) {
+      struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT+k]);
+      uint *a = (uint *)bp->data;
+      for (i = 0; i < NINDIRECT; i++) {
+        if (a[i]) {
+          bfree(ip->dev, a[i]);
+          a[i] = 0;
+        }
+      }
+      brelse(bp);
+      bfree(ip->dev, ip->addrs[NDIRECT+k]);
+      ip->addrs[NDIRECT+k] = 0;
+    }
+  }
+  //이중 간접 인덱스 2개
+  for(int k=0;k<2;k++){
+    if (ip->addrs[NDIRECT+4+k]) {
+      struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT+4+k]);
+      uint *a = (uint *)bp->data;
+      for (i = 0; i < NINDIRECT; i++) {
+        if (a[i]) {
+          struct buf *bp2 = bread(ip->dev, a[i]);
+          uint *a2 = (uint *)bp2->data;
+          for (j = 0; j < NINDIRECT; j++) {
+            if (a2[j]) {
+              bfree(ip->dev, a2[j]);
+            }
+          }
+          brelse(bp2);
+          bfree(ip->dev, a[i]);
+        }
+      }
+      brelse(bp);
+      bfree(ip->dev, ip->addrs[NDIRECT+4+k]);
+      ip->addrs[NDIRECT+4+k] = 0;
+    }
+  }
+  //3중 간접 1개
+  if (ip->addrs[NDIRECT+4+2]) {
+    struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT+4+2]);
+    uint *a = (uint *)bp->data;
+    for (i = 0; i < NINDIRECT; i++) {
+      if (a[i]) {
+        struct buf *bp2 = bread(ip->dev, a[i]);
+        uint *a2 = (uint *)bp2->data;
+        for (j = 0; j < NINDIRECT; j++) {
+          if (a2[j]) {
+            struct buf *bp3 = bread(ip->dev, a2[j]);
+            uint *a3 = (uint *)bp3->data;
+            for (k = 0; k < NINDIRECT; k++) {
+              if (a3[k]) {
+                bfree(ip->dev, a3[k]);
+                a3[k] = 0;
+              }
+            }
+            brelse(bp3);
+            bfree(ip->dev, a2[j]);
+            a2[j] = 0;
+          }
+        }
+        brelse(bp2);
+        bfree(ip->dev, a[i]);
+        a[i] = 0;
+      }
     }
     brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
+    bfree(ip->dev, ip->addrs[NDIRECT+4+2]);
+    ip->addrs[NDIRECT+4+2] = 0;
   }
 
   ip->size = 0;
