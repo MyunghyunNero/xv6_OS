@@ -109,7 +109,7 @@ found:
     p->priority = min->p->priority;   // 최소 우선순위 넣기
     
   }
-  enqueue(p);  
+  // enqueue(p);  
   release(&ptable.lock);
   
 
@@ -357,38 +357,38 @@ scheduler(void)
     // 현재 실행하는 프로세스 큐에서 제외 (정해진 CPU 사용량 충족 되면)
   
 
-    NODE *highP_Node = select_highest_priority();
-    struct proc *highP = highP_Node->p;
+    // NODE *highP_Node = select_highest_priority();
+    // struct proc *highP = highP_Node->p;
 
-    p=highP;
+    // p=highP;
     
 
-    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    //   if(p->state != RUNNABLE)
-    //     continue;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
 
-    //   struct proc *highP;
-    //   struct proc *p1;       
-    //   min_priority = p->priority;
-    //   highP = p;
-    //   for(p1 = ptable.proc; p1 < &ptable.proc[NPROC]; p1++){
-    //     if(p1->state == RUNNABLE && min_priority > p1->priority){
-    //       min_priority = p1->priority;
-    //       highP = p1;
-    //     }
-    //   }
-    //   if(highP->priority_tick%60==0){
-    //       cprintf("PID: %d, PRIORITY: %d, PROC_TICK: %d ticks, TOTAL_CPU_USAGE: %d (%d) \n", highP->pid, highP->priority,
-    //       highP->proc_tick, highP->cpu_used,ncpu);
-    //       // dequeue(highP);
-    //       highP->priority += (highP->priority_tick/10);
-    //       highP->priority_tick = 0;
-    //       highP->proc_tick=0;
-    //       // enqueue(highP);
-    //       #ifdef DEBUG
-    //         cprintf("PID: %d, NAME: %s,\n", p->pid, p->name);
-    //       #endif  
-    //   }
+      struct proc *highP;
+      struct proc *p1;       
+      min_priority = p->priority;
+      highP = p;
+      for(p1 = ptable.proc; p1 < &ptable.proc[NPROC]; p1++){
+        if(p1->state == RUNNABLE && min_priority > p1->priority){
+          min_priority = p1->priority;
+          highP = p1;
+        }
+      }
+      if(highP->priority_tick%60==0){
+          cprintf("PID: %d, PRIORITY: %d, PROC_TICK: %d ticks, TOTAL_CPU_USAGE: %d (%d) \n", highP->pid, highP->priority,
+          highP->proc_tick, highP->cpu_used,ncpu);
+          // dequeue(highP);
+          highP->priority += (highP->priority_tick/10);
+          highP->priority_tick = 0;
+          highP->proc_tick=0;
+          // enqueue(highP);
+          #ifdef DEBUG
+            cprintf("PID: %d, NAME: %s,\n", p->pid, p->name);
+          #endif  
+      }
       
       p = highP;
         
@@ -409,7 +409,7 @@ scheduler(void)
     }
     release(&ptable.lock);
 
-    // }
+    }
 }
 
 // Enter scheduler.  Must hold only ptable.lock
