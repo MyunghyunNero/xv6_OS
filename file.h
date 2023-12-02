@@ -1,3 +1,4 @@
+
 struct file {
   enum { FD_NONE, FD_PIPE, FD_INODE } type;
   int ref; // reference count
@@ -7,7 +8,6 @@ struct file {
   struct inode *ip;
   uint off;
 };
-
 
 // in-memory copy of an inode
 struct inode {
@@ -22,7 +22,7 @@ struct inode {
   short minor;
   short nlink;
   uint size;
-  uint addrs[NDIRECT+1];
+  uint addrs[13]; // Data block addresses
 };
 
 // table mapping major device number to

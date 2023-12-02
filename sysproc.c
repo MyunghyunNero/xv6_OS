@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+extern pte_t * walkpgdir(pde_t *pgdir, const void *va, int alloc);
 
 int
 sys_fork(void)
@@ -89,27 +90,52 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
-int
-sys_date(void)
-{
-  struct rtcdate *r;
 
-  argptr(0,(void*)&r,sizeof(r));
-  cmostime(r);
-  return 0;
+int
+sys_ssualloc(void)
+{
+  int n;  // 할당할 메모리 크기
+
+  // 매개변수로 전달된 메모리 크기를 추출
+  if(argint(0, &n) < 0 || n <= 0 || n % PGSIZE != 0)
+    return -1;  // 매개변수 검증
+
+  // 현재 프로세스의 구조체를 가져옴
+  struct proc *curproc = myproc();
+
+  // 새로운 메모리 크기를 계산
+  uint new_sz = curproc->sz + n;
+
+  // 실제 메모리 할당 없이 프로세스의 메모리 크기만 증가
+  curproc->sz = new_sz;
+  return new_sz - n;  // 할당된 가상 메모리 주소 반환
+}
+int
+sys_getvp(void)
+{
+  struct proc *curproc = myproc();
+
+  // 가상 페이지 개수 반환
+  return curproc->sz / PGSIZE;
 }
 
 int
-sys_set_sche_info(void)
+sys_getpp(void)
 {
-    int n;
-    int n2;
-    if(argint(0, &n) < 0)    // n 은 우선순위 받기
-      return -1;
-    if(argint(1, &n2) < 0)   // n2는 종료 tick 받기
-      return -1;
-    cprintf("set_sche_info() pid =%d\n",myproc()->pid);   //우선순위 할당 출력
-    myproc()->priority=n;   //현재 실행하는 프로세스에 우선순위와 종료 tick 저장
-    myproc()->cpu_end=n2;
-    return 0;
-}
+  struct proc *curproc = myproc();
+
+  // 물리 페이지 개수 반환
+  int num_pages = 0;
+
+  // 프로세스의 페이지 테이블을 확인하여 물리 페이지 개수 계산
+  for (uint va = 0; va < curproc->sz; va += PGSIZE) {
+    pde_t *pde = &curproc->pgdir[PDX(va)];
+    pte_t *pte = walkpgdir(curproc->pgdir, (char*)va, 0);
+
+    if (pde && *pde & PTE_P && pte && *pte & PTE_P) {
+      num_pages++;
+    }
+  }
+
+  return num_pages;
+} 
