@@ -371,7 +371,7 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
-
+// 6개의 직접 테이블 , 4개의 간접 테이블, 2개의 2-level 간접 테이블 ,1개의 1-level 간접 테이블 매핑 구현 테스트
 static uint
 bmap(struct inode *ip, uint bn)
 {
@@ -384,7 +384,7 @@ bmap(struct inode *ip, uint bn)
     return addr;
   }
   bn -= NDIRECT;
-
+ //간접 매핑
   if(bn < NINDIRECT){
     //간접 블록 4개
     for(int k=0;k<4;k++){
@@ -401,7 +401,7 @@ bmap(struct inode *ip, uint bn)
     }
   }
   bn -= NINDIRECT;
-
+//2-level 
   if(bn < NINDIRECT * NINDIRECT){
     // 이중간접 2개
     for(int k=0;k<2;k++){
@@ -432,6 +432,7 @@ bmap(struct inode *ip, uint bn)
     }
   }
   bn-=NDOUBLEINDIRECT;
+  //3-level
   if(bn < NTRIPLEINDIRECT){
     // 3중 간접 1개
     if((addr = ip->addrs[NDIRECT + 4+2]) == 0)
@@ -489,6 +490,7 @@ itrunc(struct inode *ip)
       ip->addrs[i] = 0;
     }
   }
+  //간접
   //간접 인덱스 4개
   for(int k = 0;k<4;k++){
     if (ip->addrs[NDIRECT+k]) {
@@ -505,6 +507,7 @@ itrunc(struct inode *ip)
       ip->addrs[NDIRECT+k] = 0;
     }
   }
+  //2-level
   //이중 간접 인덱스 2개
   for(int k=0;k<2;k++){
     if (ip->addrs[NDIRECT+4+k]) {
@@ -528,6 +531,7 @@ itrunc(struct inode *ip)
       ip->addrs[NDIRECT+4+k] = 0;
     }
   }
+  //3-level
   //3중 간접 1개
   if (ip->addrs[NDIRECT+4+2]) {
     struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT+4+2]);

@@ -5,6 +5,7 @@
 
 #define BSIZE 512
 
+// 6개의 직접 테이블 , 4개의 간접 테이블, 2개의 2-level 간접 테이블 ,1개의 1-level 간접 테이블 매핑 구현 테스트
 char buf[BSIZE];
 
 void _error(const char *msg) {

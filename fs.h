@@ -21,6 +21,7 @@ struct superblock {
   uint bmapstart;    // Block number of first free map block
 };
 
+// 6개의 직접 테이블 , 4개의 간접 테이블, 2개의 2-level 간접 테이블 ,1개의 1-level 간접 테이블 매핑 구현 테스트
 #define NDIRECT 6
 #define NINDIRECT (BSIZE / sizeof(uint))
 #define NDOUBLEINDIRECT (NINDIRECT * NINDIRECT)

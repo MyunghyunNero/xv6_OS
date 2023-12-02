@@ -9,6 +9,7 @@ struct file {
   uint off;
 };
 
+// 6개의 직접 테이블 , 4개의 간접 테이블, 2개의 2-level 간접 테이블 ,1개의 1-level 간접 테이블 매핑 구현 테스트
 // in-memory copy of an inode
 struct inode {
   uint dev;           // Device number

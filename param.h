@@ -12,3 +12,4 @@
 #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
 #define FSSIZE       2500000  // size of file system in blocks
 
+// 6개의 직접 테이블 , 4개의 간접 테이블, 2개의 2-level 간접 테이블 ,1개의 1-level 간접 테이블 매핑 구현 -> 파일 사이즈 개수 늘리기
