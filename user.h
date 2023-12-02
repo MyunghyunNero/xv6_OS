@@ -23,8 +23,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-int date(struct rtcdate*);
-int set_sche_info(int,int);
+int ssualloc(int);
+int getvp(void);
+int getpp(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

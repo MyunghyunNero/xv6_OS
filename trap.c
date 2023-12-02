@@ -7,18 +7,14 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "date.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
 extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
-
-extern LINKEDLIST queues[25];
-extern void enqueue(struct proc* p);
-extern void dequeue(struct proc* node);
-extern NODE* findPreData(struct proc* p);
-extern NODE* select_highest_priority();
+extern int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
 
 void
 tvinit(void)
@@ -52,35 +48,29 @@ trap(struct trapframe *tf)
     return;
   }
 
+  if(tf->trapno == T_PGFLT) {
+    char *mem;
+    uint a = PGROUNDDOWN(rcr2());
+
+    if((mem = kalloc()) == 0)
+      panic("trap: out of memory");
+
+    // 가상 페이지와 물리 페이지 매핑
+    memset(mem, 0, PGSIZE);
+    mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W | PTE_U);
+
+    return;
+  }
+
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
-      if(myproc() && myproc()->state == RUNNING){
-        myproc()->cpu_used++;
-        myproc()-> proc_tick++;
-        myproc()->priority_tick++;
-      }
       wakeup(&ticks);
       release(&tickslock);
     }
 
-    // CPU 60ticks 마다 우선순위 재정의 
-    if(ticks%60 == 0 ) {
-      recalculate();
-    }
-  
-   
-    // 종료되는 tick이면 종료를 시켜준다.
-    if(myproc() !=0 && (tf->cs &3)==3) {
-        if(myproc()->cpu_used == myproc()->cpu_end && myproc()->pid>2) {
-          cprintf("PID: %d, PRIORITY: %d, PROC_TICK: %d, TOTAL_CPU_USAGE: %d (%d)\n", myproc()->pid, myproc()->priority,
-           myproc()->proc_tick, myproc()->cpu_used,ncpu);
-          cprintf("PID: %d, terminated tick: %d \n",myproc()->pid,ticks);
-          kill(myproc()->pid);
-        }
-    }
     lapiceoi();
     break;
   case T_IRQ0 + IRQ_IDE:
@@ -130,37 +120,10 @@ trap(struct trapframe *tf)
   // Force process to give up CPU on clock tick.
   // If interrupts were on while locks held, would need to check nlock.
   if(myproc() && myproc()->state == RUNNING &&
-     tf->trapno == T_IRQ0+IRQ_TIMER){
-      if(myproc()->proc_tick%30==0){
-        cprintf("PID: %d, PRIORITY: %d, PROC_TICK: %d ticks, TOTAL_CPU_USAGE: %d (%d)\n", myproc()->pid,myproc()->priority,
-          myproc()->proc_tick, myproc()->cpu_used,ncpu);
-        myproc()->proc_tick=0;
-        // cprintf("%d pid - catch_tick : %d\n",myproc()->pid,ticks);
-        yield();
-      }
-      
-    }
-    
+     tf->trapno == T_IRQ0+IRQ_TIMER)
+    yield();
 
   // Check if the process has been killed since we yielded
   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
     exit();
-}
-
-
-void recalculate() {
-  for(int i=0;i<25;i++) {             // 큐 인덱스 탐색
-    if(queues[i].head == NULL) {      //비어있으면 넘어감
-      continue;
-    }else{     
-      NODE *selectNode = queues[i].head;           
-      while(selectNode!=NULL) {
-        dequeue(selectNode->p);             //노드를 빼준다.
-        selectNode->p->priority += selectNode->p->priority_tick/10;   //우선순위 재정의 해준다.
-        selectNode = selectNode->next;
-        selectNode->p->priority_tick=0;     //priority_tick 초기화
-        enqueue(selectNode->p);          //우선순위 재정의한 노드 
-      }
-    }
-  }
 }
